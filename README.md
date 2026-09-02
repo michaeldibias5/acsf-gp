@@ -105,7 +105,7 @@ uncertainty_metrics(sigma_values, actual_errors)
 `auc_tail` is the chance that a badly-predicted structure gets a higher
 uncertainty than a well-predicted one. 0.5 means no signal, and the higher
 the number the better.
-\
+
 ---
 
 ## Running the tests
