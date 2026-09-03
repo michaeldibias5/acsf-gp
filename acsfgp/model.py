@@ -85,6 +85,7 @@ class Surrogate:
         y = self._energies
         train_idx, test_idx = split_indices(len(X), test_fraction=test_fraction,
                                             split=split, random_state=self.random_state)
+        self._train_idx, self._test_idx = train_idx, test_idx
 
         self._scaler = StandardScaler().fit(X[train_idx])
         self._keep = self._scaler.scale_ > 1e-10
@@ -128,6 +129,18 @@ class Surrogate:
     def _check_fitted(self):
         if self._model is None:
             raise RuntimeError("model is not trained yet - call .train() first")
+
+    @property
+    def test_images(self):
+        """Structures held out by the most recent train() call."""
+        self._check_fitted()
+        return [self._images[i] for i in self._test_idx]
+
+    @property
+    def train_images(self):
+        """Structures used by the most recent train() call."""
+        self._check_fitted()
+        return [self._images[i] for i in self._train_idx]
 
     def _transform(self, atoms_or_list):
         images = [atoms_or_list] if isinstance(atoms_or_list, Atoms) else list(atoms_or_list)
