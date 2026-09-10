@@ -204,6 +204,37 @@ class Surrogate:
             out.update(energy=self.predict(atoms))
         return out
 
+    def energy_and_forces(self, atoms: Atoms, return_uncertainty: bool = False) -> dict:
+        """Energy and forces from a single descriptor evaluation.
+
+        predict() and predict_forces() each build the descriptor, so calling
+        both costs twice as much as this. MD needs both every step.
+        """
+        self._check_fitted()
+        X = self.descriptor.frame(atoms)[None, :]
+        Xs = self._scaler.transform(X)[:, self._keep]
+        out = {}
+        if return_uncertainty:
+            if self.model_type != "gp":
+                raise ValueError("uncertainty is only available for model='gp'")
+            mu, sd = self._model.predict(Xs, return_std=True)
+            out["energy"], out["energy_std"] = float(mu[0]), float(sd[0])
+        else:
+            out["energy"] = float(self._model.predict(Xs)[0])
+        out["forces"] = self.descriptor.forces_from_weights(
+            atoms, self.dE_dfeature(Xs[0]))
+        return out
+
+    def calculator(self, uncertainty: bool = True):
+        """An ASE calculator backed by this model."""
+        from .calculator import SurrogateCalculator
+        return SurrogateCalculator(self, uncertainty=uncertainty)
+
+    def run_md(self, atoms, temperature_K: float, steps: int = 1000, **kwargs):
+        """Run NVT molecular dynamics driven by this model. See acsfgp.md.run_nvt."""
+        from .md import run_nvt
+        return run_nvt(self, atoms, temperature_K=temperature_K, steps=steps, **kwargs)
+
 
     def save(self, path) -> None:
         """Save descriptor settings and the fitted estimator."""
