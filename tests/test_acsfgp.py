@@ -160,6 +160,60 @@ def test_split_indices():
         split_indices(10, split="nonsense")
 
 
+def test_energy_and_forces_matches_separate_calls(trained):
+    m, images = trained
+    out = m.energy_and_forces(images[0], return_uncertainty=True)
+    e, s = m.predict(images[0], return_uncertainty=True)
+    assert np.isclose(out["energy"], e)
+    assert np.isclose(out["energy_std"], s)
+    assert np.allclose(out["forces"], m.predict_forces(images[0]))
+
+
+def test_calculator_matches_model(trained):
+    m, images = trained
+    at = images[0].copy()
+    at.calc = m.calculator()
+    assert np.isclose(at.get_potential_energy(), m.predict(images[0]))
+    assert np.allclose(at.get_forces(), m.predict_forces(images[0]))
+    assert at.calc.get_energy_std() >= 0
+
+
+def test_md_runs_and_reports_speed(trained, tmp_path):
+    m, images = trained
+    out = m.run_md(images[0], temperature_K=100.0, steps=6, log_every=3,
+                   trajectory=str(tmp_path / "md.traj"), verbose=False)
+    assert out["steps_completed"] == 6
+    assert len(out["log"]) == 3
+    assert out["ns_per_day"] > 0 and out["ms_per_step"] > 0
+    assert np.isfinite(out["mean_temperature_K"])
+
+    from ase.io import read
+    assert len(read(str(tmp_path / "md.traj"), index=":")) == 3
+
+
+def test_md_rejects_unknown_species(trained):
+    m, _ = trained
+    at = Atoms("H2", positions=[[0, 0, 0], [0, 0, 1.0]], cell=[6] * 3, pbc=True)
+    with pytest.raises(ValueError):
+        m.run_md(at, temperature_K=100.0, steps=2, verbose=False)
+
+
+def test_md_stops_on_rising_uncertainty(trained):
+    m, images = trained
+    out = m.run_md(images[0], temperature_K=100.0, steps=20, log_every=2,
+                   sigma_factor=0.5, verbose=False)
+    assert "uncertainty rose" in (out["stopped_because"] or "")
+    assert out["steps_completed"] < 20
+
+
+def test_md_stops_when_temperature_runs_away(trained):
+    m, images = trained
+    out = m.run_md(images[0], temperature_K=100.0, steps=20, log_every=2,
+                   max_temperature_K=1.0, verbose=False)
+    assert out["stopped_because"] is not None
+    assert out["steps_completed"] < 20
+
+
 def test_metrics():
     y = np.linspace(0, 1, 50)
     out = evaluate(y, y + 0.01, n_atoms=10)
